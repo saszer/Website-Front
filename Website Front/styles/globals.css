@@ -1,0 +1,19 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+	--header-height: 72px;
+}
+
+html:focus-within {
+	scroll-behavior: smooth;
+}
+
+body {
+	@apply bg-white text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100 antialiased;
+}
+
+.skip-link {
+	@apply sr-only focus:not-sr-only focus:fixed focus:z-50 focus:left-4 focus:top-4 focus:px-4 focus:py-2 focus:rounded-md focus:bg-neutral-900 focus:text-white;
+} 

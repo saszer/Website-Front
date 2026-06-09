@@ -17,3 +17,9 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
+    # Hold back semver-major action bumps — a major version of a pinned action
+    # can change runtime behaviour / required permissions and warrants a manual
+    # review rather than an auto-merged PR. (CodeRabbit) embracingearth.space
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]

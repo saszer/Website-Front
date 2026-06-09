@@ -28,6 +28,8 @@
 name: "🛡️ Security Scanning"
 
 on:
+  # Manual scan-now trigger (Actions tab / gh workflow run)
+  workflow_dispatch:
   push:
     branches: [ "main", "master", "develop", "release" ]
   pull_request:

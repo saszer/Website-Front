@@ -5,9 +5,12 @@
 #   1. TruffleHog — Secret/credential detection in code + git history
 #   2. Trivy — Container image + filesystem vulnerability scanning
 #
-# RUNS: On every push/PR to main branches
-# COST: All tools are free / open-source
-# RESULTS: GitHub Security tab + job failure on critical
+# RUNS: On every push/PR to main branches + a daily cron.
+# COST: All tools are free / open-source.
+# RESULTS → GitHub Security tab + PR comments. Gate behaviour per tool:
+#   • TruffleHog → FAILS on a VERIFIED secret.
+#   • Trivy      → findings are ADVISORY (logged, never fake-green); only a real
+#                  scan ERROR fails the step → visible RED.
 #
 # WHY MULTIPLE TOOLS:
 #   - TruffleHog: catches leaked API keys, tokens, passwords in code
@@ -16,6 +19,10 @@
 #
 # NOTE: This repo is not an npm project, so the npm-audit and
 # Dependency Review jobs from the source template are omitted.
+#
+# HARDENING (CodeRabbit): least-privilege per-job permissions (the workflow
+# default is read-only; each job widens only what it needs), checkouts never
+# persist credentials, and a concurrency guard cancels superseded runs.
 # ═══════════════════════════════════════════════════════════════════════
 
 name: "🛡️ Security Scanning"
@@ -29,12 +36,16 @@ on:
     # Daily at 3:00 AM UTC — catches newly disclosed CVEs overnight
     - cron: '0 3 * * *'
 
+# Cancel an in-flight scan when a newer commit lands on the same ref — saves CI
+# minutes and prevents stale PR statuses. embracingearth.space
+concurrency:
+  group: security-scan-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least-privilege DEFAULT: read-only for every job. Each job below widens its
+# own scope only where strictly required. embracingearth.space
 permissions:
   contents: read
-  security-events: write
-  # codeql-action/upload-sarif reads the workflow run via the Actions API; without this it
-  # errors "Resource not accessible by integration" and fails the upload. embracingearth.space
-  actions: read
 
 jobs:
   # ════════════════════════════════════════════════════════════════════
@@ -43,11 +54,17 @@ jobs:
   secret-scan:
     name: 🔑 Secret Detection (TruffleHog)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: 📥 Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           fetch-depth: 0  # Full history for scanning git commits
+          # SECURITY: never write the token into .git/config — this job walks the
+          # entire history through a secret scanner; a persisted credential would
+          # sit in the working tree it inspects. embracingearth.space
+          persist-credentials: false
 
       - name: 🔑 Run TruffleHog
         uses: trufflesecurity/trufflehog@7635b24fd512a2e817dd3e9dd661caaf035a079d # v3.93.1
@@ -63,9 +80,9 @@ jobs:
   trivy-scan:
     name: 🐳 Trivy Vulnerability Scan
     runs-on: ubuntu-latest
-    # Least-privilege (CodeRabbit): this job adds a third-party apt source and runs a downloaded
-    # binary, so it must NOT inherit the workflow's pull-requests:write. It only needs to read
-    # code and upload SARIF. embracingearth.space
+    # Least-privilege: this job adds a third-party apt source and runs a
+    # downloaded binary, so it must NOT inherit pull-requests:write. It only needs
+    # to read code and upload SARIF. embracingearth.space
     permissions:
       contents: read
       security-events: write
@@ -73,6 +90,8 @@ jobs:
     steps:
       - name: 📥 Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
 
       # The aquasecurity/trivy-action's bundled install.sh was exiting 1 BEFORE any scan
       # (flaky binary fetch), and continue-on-error then painted that dead scan green. Install
@@ -105,13 +124,10 @@ jobs:
             --format sarif --output trivy-results.sarif .
 
       - name: 📤 Upload Trivy results to GitHub Security
-        # Skip on Dependabot PRs — their GITHUB_TOKEN is read-only by design, so the
-        # security-events upload is always denied. Also gate on ENABLE_GHAS_SCANS: without
-        # GHAS code scanning the upload errors "code scanning not enabled" and reds the
-        # check. The Trivy scan above still runs; only the Security-tab upload is gated.
-        # embracingearth.space
-        # success() (not always()): if the scan step fails, skip the upload so the RED points at
-        # the broken scan, not a missing-SARIF upload error. (CodeRabbit) embracingearth.space
+        # Skip on Dependabot PRs (read-only GITHUB_TOKEN) and gate on ENABLE_GHAS_SCANS so the
+        # upload SKIPS (not fails) where GHAS code scanning is unavailable. success() (not
+        # always()) so a broken scan shows RED at the scan step, not as a missing-SARIF upload
+        # error. embracingearth.space
         if: success() && github.actor != 'dependabot[bot]' && vars.ENABLE_GHAS_SCANS == 'true'
         uses: github/codeql-action/upload-sarif@2d3fe93d4896727350828f23e48f5391e6d3f022 # v3
         with:

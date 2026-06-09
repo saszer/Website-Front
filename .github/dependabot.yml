@@ -1,0 +1,25 @@
+# ═══════════════════════════════════════════════════════════════════════
+# Dependabot — automated dependency updates · embracingearth.space
+# ═══════════════════════════════════════════════════════════════════════
+# This repo is not an npm project, so only GitHub Actions workflow
+# dependencies are tracked here. SECURITY updates (enabled via
+# Settings → Code security → "Dependabot security updates" — a repo
+# toggle, not set in this file) still apply.
+# ═══════════════════════════════════════════════════════════════════════
+version: 2
+updates:
+  # ── GitHub Actions workflow dependencies ──
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+    # Hold back semver-major action bumps — a major version of a pinned action
+    # can change runtime behaviour / required permissions and warrants a manual
+    # review rather than an auto-merged PR. (CodeRabbit) embracingearth.space
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
